@@ -3,4 +3,5 @@
 @media(min-width:750px){.desktop-columns{grid-template-columns:1.05fr 1fr;gap:22px;align-items:start}.groups{margin-top:16px}.brand{padding-top:32px}.match-card{padding:28px}.scoreline input{font-size:2.8rem}.players-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.panel{padding:28px}}
 @media(max-width:440px){.brand{padding:18px 16px}.brand small{font-size:.58rem}main{padding:0 14px 105px}.panel{padding:18px}.match-card{padding:18px}.groups{gap:6px}.group-title{padding:10px 8px;font-size:.8rem}.group-member{padding:9px 8px;font-size:.85rem}.local-badge{font-size:.68rem}.title-row{margin-bottom:12px}.field-row{flex-wrap:wrap}.field-row label{min-width:160px}}
 @media(prefers-reduced-motion:no-preference){.group-member{transition:background .25s}button{transition:background .15s,transform .15s}button:active{transform:translateY(1px)}}
+.rolebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}.rolebar #cloud-status{flex:1}.rolebar .btn{font-size:.8rem;padding:6px;min-height:36px}.scoreline input:disabled{opacity:1;color:#c1d4c8}.scoreline input:disabled::placeholder{color:#c1d4c8}
 

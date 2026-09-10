@@ -3,6 +3,7 @@ export const LEVELS = ['Gold', 'Silver', 'Bronze'];
 export const RULES = Object.freeze({version:1, points:{Common:2,Gold:3,Silver:2,Bronze:1}, season:[15,10,7,5,4,3,2,1], target:11, margin:2, waitMultiplier:1});
 export const uid = () => crypto.randomUUID();
 export const clone = value => JSON.parse(JSON.stringify(value));
+const canonical = value => JSON.stringify(value, (_,v) => v && typeof v==='object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])) : v);
 export function emptyDB(){return {version:VERSION,revision:0,players:[],tournaments:[]};}
 export function nameOf(db,id){return db.players.find(p=>p.id===id)?.name || 'Игрок';}
 export function addPlayers(db, text){
@@ -86,7 +87,7 @@ export function validateDB(data){
   for(const t of data.tournaments){
     if(!t||!isId(t.id)||tids.has(t.id)||typeof t.title!=='string'||t.title.length>80||!Number.isInteger(t.revision)||t.revision<1||!['active','completed'].includes(t.status)||!Number.isFinite(Date.parse(t.startedAt)))throw Error('Некорректный турнир в копии.');tids.add(t.id);
     if(!Array.isArray(t.ids)||t.ids.length<4||t.ids.length>8||new Set(t.ids).size!==t.ids.length||t.ids.some(id=>!pids.has(id))||!Array.isArray(t.draw)||t.draw.length!==t.ids.length||new Set(t.draw).size!==t.ids.length||t.draw.some(id=>!t.ids.includes(id)))throw Error('Некорректный состав или жеребьёвка.');
-    if(!t.names||t.ids.some(id=>typeof t.names[id]!=='string'||t.names[id].length>40)||JSON.stringify(t.rules)!==JSON.stringify(RULES)||!Array.isArray(t.matches)||t.matches.length>10000||!Array.isArray(t.voided))throw Error('Некорректные правила или история.');
+    if(!t.names||t.ids.some(id=>typeof t.names[id]!=='string'||t.names[id].length>40)||canonical(t.rules)!==canonical(RULES)||!Array.isArray(t.matches)||t.matches.length>10000||!Array.isArray(t.voided))throw Error('Некорректные правила или история.');
     const replay={...clone(t),matches:[],status:'active',current:null};replay.current=nextPair(replay);
     for(const m of t.matches){const lv=levels(replay);if(!m||typeof m.id!=='string'||mids.has(m.id)||!t.ids.includes(m.a)||!t.ids.includes(m.b)||m.a===m.b||!validScore(m.scoreA,m.scoreB)||m.winner!==(m.scoreA>m.scoreB?m.a:m.b)||m.levelA!==lv[m.a]||m.levelB!==lv[m.b]||m.points!==RULES.points[lv[m.winner]]||!Number.isFinite(Date.parse(m.at))||m.a!==replay.current.a||m.b!==replay.current.b)throw Error('Матчи или начисления в копии повреждены.');mids.add(m.id);replay.matches.push(m);replay.current=nextPair(replay);}
     for(const m of t.voided){if(!m||!t.ids.includes(m.a)||!t.ids.includes(m.b)||!validScore(m.scoreA,m.scoreB)||typeof m.id!=='string'||typeof m.voidReason!=='string')throw Error('Некорректная запись отмены.');}
