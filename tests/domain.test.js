@@ -15,5 +15,29 @@ test('Markdown contains all match ids, levels, distinct tournament/season points
 test('imports reject invalid scores, duplicate player ids, corrupt points and current pair',()=>{const {db,t}=fixture();recordScore(t,11,4);assert.deepEqual(validateDB(db),db);for(const damage of [d=>d.players.push(d.players[0]),d=>d.tournaments[0].matches[0].points=99,d=>d.tournaments[0].matches[0].scoreA=10,d=>d.tournaments[0].current.a='missing']){const bad=clone(db);damage(bad);assert.throws(()=>validateDB(bad));}});
 test('no finish before opening; active tournament uniqueness; profiles survive rename/archive',()=>{const {db,t,ids}=fixture();assert.throws(()=>finish(t));assert.throws(()=>createTournament(db,ids,'duplicate'));const added=addPlayers(db,'Игрок 1, Новый');assert.equal(added[0],ids[0]);assert.equal(db.players.length,7);});
 test('PostgreSQL JSONB key reordering preserves a valid league',()=>{const {db,t}=fixture(5);for(let i=0;i<10;i++)recordScore(t,11,5);finish(t);const jsonb=JSON.parse(JSON.stringify(db,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v));assert.deepEqual(standings(validateDB(jsonb).tournaments[0]),standings(t));});
-test('random tournaments 4–8: valid pairs, no starvation, valid snapshots and unique final places',()=>{for(let n=4;n<=8;n++)for(let seed=1;seed<=35;seed++){const {db,t}=fixture(n),random=rng(seed);for(let i=0;i<60;i++){assert.notEqual(t.current.a,t.current.b);assert.ok(t.ids.includes(t.current.a)&&t.ids.includes(t.current.b));const aWins=random()>.5;recordScore(t,aWins?11:Math.floor(random()*10),aWins?Math.floor(random()*10):11);const lv=levels(t);assert.equal(Object.keys(lv).length,n);if(i>2*n){const {last}=progress(t);assert.ok(Math.max(...t.ids.map(id=>t.matches.length-1-last[id]))<=2*n,`waiting n=${n}, seed=${seed}`);}}finish(t);const rs=standings(t);assert.deepEqual(rs.map(p=>p.place),Array.from({length:n},(_,i)=>i+1));assert.equal(rs.reduce((s,p)=>s+p.games,0),120);assert.equal(rs.reduce((s,p)=>s+p.points,0),t.matches.reduce((s,m)=>s+m.points,0));validateDB(db);}});
+test('random tournaments 4–32: valid pairs, no starvation, valid snapshots and unique final places',()=>{for(let n=4;n<=32;n++)for(let seed=1;seed<=35;seed++){const {db,t}=fixture(n),random=rng(seed);for(let i=0;i<100;i++){assert.notEqual(t.current.a,t.current.b);assert.ok(t.ids.includes(t.current.a)&&t.ids.includes(t.current.b));const aWins=random()>.5;recordScore(t,aWins?11:Math.floor(random()*10),aWins?Math.floor(random()*10):11);const lv=levels(t);assert.equal(Object.keys(lv).length,n);if(i>2*n){const {last}=progress(t);assert.ok(Math.max(...t.ids.map(id=>t.matches.length-1-last[id]))<=2*n,`waiting n=${n}, seed=${seed}`);}}finish(t);const rs=standings(t);assert.deepEqual(rs.map(p=>p.place),Array.from({length:n},(_,i)=>i+1));assert.equal(rs.reduce((s,p)=>s+p.games,0),200);assert.equal(rs.reduce((s,p)=>s+p.points,0),t.matches.reduce((s,m)=>s+m.points,0));validateDB(db);}});
 
+
+test('nine players finish, export, reload and deletion keep season totals valid',()=>{
+  const {db,t,ids}=fixture(9);
+  for(let i=0;i<4;i++)recordScore(t,11,5);
+  assert.equal(levels(t)[ids[8]],'Gold');
+  assert.equal(standings(t).find(p=>p.id===ids[8]).games,0);
+  for(let i=0;i<30;i++)recordScore(t,11,6);
+  finish(t);
+  assert.equal(standings(t)[8].seasonPoints,0);
+  assert.equal(league(db).reduce((s,p)=>s+p.points,0),47);
+  validateDB(JSON.parse(JSON.stringify(db)));
+  assert.ok(!/undefined|NaN/.test(report(db,t)));
+  removeTournament(db,t.id);
+  assert.ok(league(db).every(p=>p.points===0&&p.games===0));
+});
+test('participant boundaries allow 32 and reject 33',()=>{
+  const {db,t}=fixture(32);validateDB(db);
+  for(let i=0;i<16;i++)recordScore(t,11,5);
+  finish(t);
+  const extra=addPlayers(db,'Extra')[0];
+  assert.throws(()=>createTournament(db,[...t.ids,extra],'Too many'),/32/);
+  const invalid=clone(db);invalid.tournaments[0].ids.push(extra);
+  assert.throws(()=>validateDB(invalid));
+});

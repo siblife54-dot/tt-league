@@ -1,4 +1,6 @@
 export const VERSION = 1;
+export const MIN_PLAYERS = 4;
+export const MAX_PLAYERS = 32;
 export const LEVELS = ['Gold', 'Silver', 'Bronze'];
 export const RULES = Object.freeze({version:1, points:{Common:2,Gold:3,Silver:2,Bronze:1}, season:[15,10,7,5,4,3,2,1], target:11, margin:2, waitMultiplier:1});
 export const uid = () => crypto.randomUUID();
@@ -9,7 +11,7 @@ export function nameOf(db,id){return db.players.find(p=>p.id===id)?.name || 'И�
 export function addPlayers(db, text){
   const names=text.split(/[,\n]/).map(n=>n.trim().replace(/\s+/g,' ')).filter(Boolean);
   if(!names.length) throw Error('Введите имя игрока.');
-  if(names.length>30) throw Error('Добавьте не больше 30 игроков за один раз.');
+  if(names.length>MAX_PLAYERS) throw Error('Добавьте не больше 32 игроков за один раз.');
   if(names.some(n=>n.length>40)) throw Error('Имя должно быть не длиннее 40 символов.');
   const added=[];
   for(const name of names){const existing=db.players.find(p=>p.name.toLocaleLowerCase()===name.toLocaleLowerCase());if(existing){existing.archived=false;added.push(existing.id);}else{const p={id:uid(),name,archived:false};db.players.push(p);added.push(p.id);}}
@@ -18,7 +20,7 @@ export function addPlayers(db, text){
 export function shuffle(values, random=()=>crypto.getRandomValues(new Uint32Array(1))[0]/4294967296){const a=[...values];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function createTournament(db,ids,title,draw=null){
   if(db.tournaments.some(t=>t.status==='active')) throw Error('Сначала завершите текущий турнир.');
-  if(new Set(ids).size!==ids.length || ids.length<4 || ids.length>8)throw Error('Выберите от 4 до 8 разных игроков.');
+  if(new Set(ids).size!==ids.length || ids.length<MIN_PLAYERS || ids.length>MAX_PLAYERS)throw Error('Выберите от 4 до 32 разных игроков.');
   if(ids.some(id=>!db.players.some(p=>p.id===id&&!p.archived)))throw Error('Не удалось найти выбранного игрока.');
   const order=draw||shuffle(ids);if(order.length!==ids.length||new Set(order).size!==ids.length||order.some(id=>!ids.includes(id)))throw Error('Неверная жеребьёвка.');
   const t={id:uid(),revision:1,title:(title||'Турнир TT League').trim().slice(0,80),startedAt:new Date().toISOString(),endedAt:null,status:'active',ids:[...ids],names:Object.fromEntries(ids.map(id=>[id,nameOf(db,id)])),draw:[...order],rules:clone(RULES),matches:[],voided:[],current:null};
@@ -55,7 +57,7 @@ export function recordScore(t,aScore,bScore){
 export function undoLast(t){if(t.status!=='active'||!t.matches.length)throw Error('Нет результата для отмены.');const m=t.matches.pop();t.voided.push({...m,voidReason:'Отмена последнего результата',voidedAt:new Date().toISOString()});t.current={a:m.a,b:m.b,reason:m.reason,cross:m.cross,opening:m.levelA==='Common'};t.revision++;return m;}
 export function standings(t){const lv=levels(t);const rows=t.ids.map(id=>({id,name:t.names[id],level:lv[id],games:0,wins:0,losses:0,points:0,scored:0,conceded:0}));const byId=Object.fromEntries(rows.map(r=>[r.id,r]));for(const m of t.matches){const a=byId[m.a],b=byId[m.b];a.games++;b.games++;a.scored+=m.scoreA;a.conceded+=m.scoreB;b.scored+=m.scoreB;b.conceded+=m.scoreA;byId[m.winner].wins++;byId[m.winner===m.a?m.b:m.a].losses++;byId[m.winner].points+=m.points;}
   for(const r of rows){r.rate=r.games?r.wins/r.games:0;r.diff=r.games?(r.scored-r.conceded)/r.games:0;}
-  rows.sort((a,b)=>b.points-a.points||b.rate-a.rate||b.diff-a.diff||t.draw.indexOf(a.id)-t.draw.indexOf(b.id));return rows.map((r,i)=>({...r,place:i+1,seasonPoints:t.status==='completed'?t.rules.season[i]:0}));
+  rows.sort((a,b)=>b.points-a.points||b.rate-a.rate||b.diff-a.diff||t.draw.indexOf(a.id)-t.draw.indexOf(b.id));return rows.map((r,i)=>({...r,place:i+1,seasonPoints:t.status==='completed'?(t.rules.season[i]??0):0}));
 }
 export function finish(t){if(t.status!=='active')throw Error('Турнир уже завершён.');if(t.matches.length<Math.floor(t.ids.length/2))throw Error('Завершите все стартовые матчи. Для отмены теста можно удалить турнир.');t.status='completed';t.endedAt=new Date().toISOString();t.current=null;t.revision++;return standings(t);}
 export function completed(db){return db.tournaments.filter(t=>t.status==='completed').sort((a,b)=>a.startedAt.localeCompare(b.startedAt)||a.id.localeCompare(b.id));}
@@ -68,7 +70,7 @@ const md=s=>String(s).replace(/[|\r\n]/g,' ').replace(/([\\`*_\[\]<>])/g,'\\$1')
 export function report(db,t){
   if(t.status!=='completed')throw Error('Сначала завершите турнир.');
   const all=completed(db),ix=all.findIndex(x=>x.id===t.id),prior=all.slice(0,ix),before=league(db,prior),after=league(db,all.slice(0,ix+1)),rows=standings(t),n=id=>md(t.names[id]),notes=awards(t,prior);
-  const lines=[`# TT League — ${md(t.title)}`,``,`ID турнира: ${t.id} · редакция ${t.revision} · версия базы ${db.revision} · формат 1`,`Начало: ${t.startedAt}; завершение: ${t.endedAt}. Время ISO 8601 (UTC).`,`Сезон: Основной (main). Статус: завершён.`,`Данные: только турниры, сохранённые в этом приложении. Удалённые и неимпортированные турниры не включены.`,``,`## Правила`,`Одна партия до 11, разница 2. Старт случайный. Победа: старт 2, Gold 3, Silver 2, Bronze 1; поражение и проход 0. В межуровневой игре — очки уровня победителя ДО матча.`,`Места: сумма очков → процент побед → средняя разница игровых очков → сохранённая жеребьёвка. Последняя группа не определяет место.`,`Очки сезона за места 1–8: ${t.rules.season.join(', ')}.`,`При долгом ожидании (${t.ids.length-1} пропущенных матчей) очередь важнее размера группы; одиночный игрок получает соперника ближайшего уровня.`,`Жеребьёвка (ID): ${t.draw.join(', ')}.`,``,`## Итоги`,`| Место | Игрок | ID | Игр | В | П | % побед | Очки турнира | Последняя группа | Сезон до | + за место | Сезон после |`,`|---|---|---|---|---|---|---|---|---|---|---|---|`];
+  const lines=[`# TT League — ${md(t.title)}`,``,`ID турнира: ${t.id} · редакция ${t.revision} · версия базы ${db.revision} · формат 1`,`Начало: ${t.startedAt}; завершение: ${t.endedAt}. Время ISO 8601 (UTC).`,`Сезон: Основной (main). Статус: завершён.`,`Данные: только турниры, сохранённые в этом приложении. Удалённые и неимпортированные турниры не включены.`,``,`## Правила`,`Одна партия до 11, разница 2. Старт случайный. Победа: старт 2, Gold 3, Silver 2, Bronze 1; поражение и проход 0. В межуровневой игре — очки уровня победителя ДО матча.`,`Места: сумма очков → процент побед → средняя разница игровых очков → сохранённая жеребьёвка. Последняя группа не определяет место.`,`Очки сезона за места 1–8: ${t.rules.season.join(', ')}; с 9-го места — 0.`,`При долгом ожидании (${t.ids.length-1} пропущенных матчей) очередь важнее размера группы; одиночный игрок получает соперника ближайшего уровня.`,`Жеребьёвка (ID): ${t.draw.join(', ')}.`,``,`## Итоги`,`| Место | Игрок | ID | Игр | В | П | % побед | Очки турнира | Последняя группа | Сезон до | + за место | Сезон после |`,`|---|---|---|---|---|---|---|---|---|---|---|---|`];
   for(const r of rows)lines.push(`| ${r.place} | ${n(r.id)} | ${r.id} | ${r.games} | ${r.wins} | ${r.losses} | ${percent(r.wins,r.games)} | ${r.points} | ${r.level} | ${before.find(p=>p.id===r.id).points} | ${r.seasonPoints} | ${after.find(p=>p.id===r.id).points} |`);
   lines.push('','## Все матчи','| № / ID | Игрок A | Игрок B | Счёт A:B | Победитель | Уровни до A / B | После A / B | Очки победителя |','|---|---|---|---|---|---|---|---|');
   t.matches.forEach((m,i)=>lines.push(`| ${i+1} / ${m.id} | ${n(m.a)} | ${n(m.b)} | ${m.scoreA}:${m.scoreB} | ${n(m.winner)} | ${m.levelA} / ${m.levelB} | ${transition(m.levelA,m.winner===m.a)} / ${transition(m.levelB,m.winner===m.b)} | ${m.points} |`));
@@ -86,7 +88,7 @@ export function validateDB(data){
   const tids=new Set(),mids=new Set();let active=0;
   for(const t of data.tournaments){
     if(!t||!isId(t.id)||tids.has(t.id)||typeof t.title!=='string'||t.title.length>80||!Number.isInteger(t.revision)||t.revision<1||!['active','completed'].includes(t.status)||!Number.isFinite(Date.parse(t.startedAt)))throw Error('Некорректный турнир в копии.');tids.add(t.id);
-    if(!Array.isArray(t.ids)||t.ids.length<4||t.ids.length>8||new Set(t.ids).size!==t.ids.length||t.ids.some(id=>!pids.has(id))||!Array.isArray(t.draw)||t.draw.length!==t.ids.length||new Set(t.draw).size!==t.ids.length||t.draw.some(id=>!t.ids.includes(id)))throw Error('Некорректный состав или жеребьёвка.');
+    if(!Array.isArray(t.ids)||t.ids.length<MIN_PLAYERS||t.ids.length>MAX_PLAYERS||new Set(t.ids).size!==t.ids.length||t.ids.some(id=>!pids.has(id))||!Array.isArray(t.draw)||t.draw.length!==t.ids.length||new Set(t.draw).size!==t.ids.length||t.draw.some(id=>!t.ids.includes(id)))throw Error('Некорректный состав или жеребьёвка.');
     if(!t.names||t.ids.some(id=>typeof t.names[id]!=='string'||t.names[id].length>40)||canonical(t.rules)!==canonical(RULES)||!Array.isArray(t.matches)||t.matches.length>10000||!Array.isArray(t.voided))throw Error('Некорректные правила или история.');
     const replay={...clone(t),matches:[],status:'active',current:null};replay.current=nextPair(replay);
     for(const m of t.matches){const lv=levels(replay);if(!m||typeof m.id!=='string'||mids.has(m.id)||!t.ids.includes(m.a)||!t.ids.includes(m.b)||m.a===m.b||!validScore(m.scoreA,m.scoreB)||m.winner!==(m.scoreA>m.scoreB?m.a:m.b)||m.levelA!==lv[m.a]||m.levelB!==lv[m.b]||m.points!==RULES.points[lv[m.winner]]||!Number.isFinite(Date.parse(m.at))||m.a!==replay.current.a||m.b!==replay.current.b)throw Error('Матчи или начисления в копии повреждены.');mids.add(m.id);replay.matches.push(m);replay.current=nextPair(replay);}
