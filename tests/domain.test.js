@@ -92,3 +92,28 @@ test('legacy scheduling history remains readable after switching queues',()=>{
  while(t.current){recordScore(t,11,5);validateDB(db);}
  continueTournament(t);recordScore(t,11,5);validateDB(db);
 });
+
+test('career totals sum both score orientations, exclude active and reverse deleted tournaments',()=>{
+ const {db,t,ids}=fixture(4);
+ const newcomer=addPlayers(db,'New player')[0];
+ recordScore(t,11,5);recordScore(t,7,11);finish(t);
+ let a=league(db).find(p=>p.id===ids[0]);
+ assert.equal(a.scored,11);assert.equal(a.conceded,5);assert.equal(a.wins,1);
+ const second=createTournament(db,ids,'Second',ids);
+ recordScore(second,3,11);recordScore(second,11,9);
+ assert.deepEqual(league(db).find(p=>p.id===ids[0]),a);
+ finish(second);
+ a=league(db).find(p=>p.id===ids[0]);
+ assert.equal(a.scored,14);assert.equal(a.conceded,16);
+ assert.equal(a.games,2);assert.equal(a.wins,1);assert.equal(a.losses,1);assert.equal(a.tournaments,2);
+ assert.equal(league(db).reduce((s,p)=>s+p.titles,0),2);
+ const b=league(db).find(p=>p.id===ids[1]);
+ assert.equal(b.scored,16);assert.equal(b.conceded,14);
+ assert.equal(league(db).find(p=>p.id===newcomer).scored,0);
+ db.players[0].archived=true;
+ removeTournament(db,t.id);
+ a=league(db).find(p=>p.id===ids[0]);
+ assert.equal(a.scored,3);assert.equal(a.conceded,11);assert.equal(a.wins,0);assert.equal(a.losses,1);
+ removeTournament(db,second.id);
+ assert.ok(league(db).every(p=>p.scored===0&&p.conceded===0&&p.games===0&&p.titles===0));
+});

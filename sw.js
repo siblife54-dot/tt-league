@@ -1,4 +1,4 @@
-const CACHE='tt-league-v4-balance';
+const CACHE='tt-league-v5-career-stats';
 const ASSETS=['./','./index.html','./style.css','./app.js','./domain.js','./storage.js','./cloud.js','./cloud-config.js','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
 // A new version waits until the old application is closed; no reload during a match.
