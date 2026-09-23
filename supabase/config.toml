@@ -1,0 +1,4 @@
+project_id = "nnikaqkqwanhupljcigo"
+
+[functions.tt-commentator]
+verify_jwt = true

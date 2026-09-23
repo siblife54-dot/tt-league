@@ -1,6 +1,10 @@
 node_modules/
+.npm-cache/
 *.log
 .DS_Store
 .env
 test-results/
 coverage/
+supabase/functions/.env
+supabase/.temp/
+.env.local
