@@ -4,6 +4,7 @@ import {factsForEvent,fallbackResult,formatTelegram,modelRequest} from './commen
 const jsonHeaders={'Content-Type':'application/json'};
 const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:jsonHeaders});
 const required=(name:string)=>{const value=Deno.env.get(name);if(!value)throw Error(`Missing secret: ${name}`);return value;};
+const detail=(stage:string,error:unknown)=>Error(`${stage}: ${error instanceof Error?error.message:JSON.stringify(error)}`);
 
 async function cloudComment(facts:Record<string,unknown>,recent:string[]){
   const apiKey=required('CLOUDRU_API_KEY');
@@ -38,12 +39,13 @@ Deno.serve(async req=>{
     const serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||JSON.parse(required('SUPABASE_SECRET_KEYS')).default;
     const db=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}});
     const {data:found,error:readError}=await db.from('tt_commentary_events').select('*').eq('id',id).single();
-    if(readError||!found)throw readError||Error('Event not found');
+    if(readError)throw detail('read event',readError);
+    if(!found)throw Error('Event not found');
     if(found.status==='sent')return reply({ok:true,duplicate:true});
     if(found.attempts>=3)return reply({ok:false,error:'Retry limit reached'},409);
 
     const {data:event,error:claimError}=await db.from('tt_commentary_events').update({status:'processing',attempts:found.attempts+1,error:null}).eq('id',id).in('status',['pending','failed']).select('*').maybeSingle();
-    if(claimError)throw claimError;
+    if(claimError)throw detail('claim event',claimError);
     if(!event)return reply({ok:true,duplicate:true});
 
     if(event.event_type==='match_voided'){
@@ -58,7 +60,7 @@ Deno.serve(async req=>{
     }
 
     const {data:stateRow,error:stateError}=await db.from('tt_league_state').select('payload').eq('id','main').single();
-    if(stateError)throw stateError;
+    if(stateError)throw detail('read league state',stateError);
     const facts=factsForEvent(event,stateRow.payload);
     const {data:recentRows}=await db.from('tt_commentary_events').select('telegram_text').eq('status','sent').not('telegram_text','is',null).order('created_at',{ascending:false}).limit(5);
     const recent=(recentRows||[]).map((x:{telegram_text:string})=>x.telegram_text.slice(0,350));
@@ -67,10 +69,10 @@ Deno.serve(async req=>{
     const text=formatTelegram(event,facts,generated);
     const sent=await telegram('sendMessage',{chat_id:required('TELEGRAM_CHAT_ID'),text,disable_web_page_preview:true});
     const {error:saveError}=await db.from('tt_commentary_events').update({status:'sent',telegram_message_id:sent.message_id,telegram_text:text,error:aiError||null,processed_at:new Date().toISOString()}).eq('id',id);
-    if(saveError)throw saveError;
+    if(saveError)throw detail('save sent event',saveError);
     return reply({ok:true,used_fallback:Boolean(aiError)});
   }catch(error){
-    const message=error instanceof Error?error.message:String(error);
+    const message=error instanceof Error?error.message:JSON.stringify(error);
     if(id)try{
       const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
       if(url&&key)await createClient(url,key,{auth:{persistSession:false}}).from('tt_commentary_events').update({status:'failed',error:message.slice(0,1000),processed_at:new Date().toISOString()}).eq('id',id).eq('status','processing');
@@ -79,4 +81,3 @@ Deno.serve(async req=>{
     return reply({ok:false,error:message},500);
   }
 });
-

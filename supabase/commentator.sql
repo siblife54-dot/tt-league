@@ -24,6 +24,7 @@ create table if not exists public.tt_commentary_events (
 alter table public.tt_commentary_events enable row level security;
 revoke all on public.tt_commentary_events from public, anon, authenticated;
 grant all on public.tt_commentary_events to service_role;
+grant select on public.tt_league_state to service_role;
 
 create index if not exists tt_commentary_events_status_created_idx
   on public.tt_commentary_events(status, created_at);
