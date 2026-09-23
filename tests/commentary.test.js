@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {addPlayers,clone,createTournament,emptyDB,finish,recordScore} from '../domain.js';
-import {factsForEvent,fallbackResult,formatTelegram,modelRequest,standings} from '../supabase/functions/tt-commentator/commentary.js';
+import {factsForEvent,fallbackResult,formatTelegram,modelRequest,standings,SYSTEM_PROMPT} from '../supabase/functions/tt-commentator/commentary.js';
 
 function tournamentFixture(){
   const db=emptyDB(),ids=addPlayers(db,'Игорь, Саша, Юра, Рома');
@@ -52,4 +52,11 @@ test('voided result formatting clearly marks cancellation',()=>{
   const event={event_type:'match_voided',payload:{tournament:clone(current),match:{...match,voidedAt:new Date().toISOString()}}};
   const facts=factsForEvent(event,db);
   assert.equal(formatTelegram(event,facts,{}),'❌ РЕЗУЛЬТАТ ОТМЕНЁН\nИгорь 11:6 Саша');
+});
+test('commentator prompt requests varied dark sports humor without invented facts',()=>{
+  assert.match(SYSTEM_PROMPT,/чёрный юмор/);
+  assert.match(SYSTEM_PROMPT,/только факты/);
+  assert.match(SYSTEM_PROMPT,/не повторяй|не повторяй их конструкции/);
+  assert.match(SYSTEM_PROMPT,/не желай людям реальной смерти/i);
+  assert.match(SYSTEM_PROMPT,/Никогда не повторяй цифры счёта/);
 });
