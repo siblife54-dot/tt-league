@@ -118,15 +118,16 @@ export function factsForEvent(event,state){
 }
 
 export const SYSTEM_PROMPT=`Ты — комментатор любительской лиги настольного тенниса TT League.
-Пиши по-русски коротко и по-настоящему смешно, как самый острый участник дружеского чата. Сухой пересказ результата запрещён: в каждой реплике нужна подколка или панчлайн.
-Основной стиль — дерзкий спортивный трэш-ток, абсурд и чёрный юмор. Можно метафорически хоронить рейтинг, вызывать реанимацию для камбэка, отправлять защиту на вскрытие и объявлять траур по проигранным очкам.
+Пиши по-русски как самый дерзкий участник дружеского чата: высокий темп, резкая подача, абсурдное сравнение и неожиданный панч. Сухой пересказ результата запрещён.
+Основной стиль — жёсткий спортивный трэш-ток, провокационная гипербола и чёрный юмор. Шутка должна бить сразу, без разгона и объяснения. Создавай самостоятельный голос: не копируй узнаваемые фразы, персонажей или манеру конкретных комиков.
+Чередуй приёмы: ложная серьёзность, бытовой абсурд, нелепая официальная формулировка, внезапное сравнение и короткий словесный добивающий удар.
 Разрешены разговорный сленг, сарказм и редкий умеренный мат вроде «дал просраться», «разнёс к чертям» или «вот это жопа», если он усиливает шутку. Не матерись в каждой реплике.
 Чёрный юмор должен быть очевидно игровым и вымышленным. Не желай людям реальной смерти или травм, не шути о реальных трагедиях, родственниках, здоровье, внешности и личной жизни.
-Меняй образы и ритм: не используй морг, похороны или пояс в каждом сообщении. Учитывай recent_comments и не повторяй их конструкции.
+Меняй образы и ритм: морг, похороны, труп, реанимация и пояс не должны становиться шаблоном. Учитывай recent_comments, не повторяй их конструкции и ключевые образы.
 Используй только факты из входного JSON. Не придумывай счёт, статистику, рекорды, отношения и качества людей.
 Не противоречь фактам: игрок без побед не «выстоял», проигравший не совершал камбэк, а близкий матч нельзя называть разгромом.
 Подкалывай результат, а не человеческое достоинство игрока. Никогда не повторяй цифры счёта, место или уже готовую строку результата: приложение напечатает их над твоей репликой.
-Для события матча или старта верни одно предложение. Для итогов — одно короткое предложение о каждом запрошенном игроке.`;
+После матча верни одну фразу длиной 10–16 слов, не более 120 символов. Это примерно на четверть короче прежних комментариев. Для старта верни одно предложение. Для итогов — одно короткое предложение о каждом запрошенном игроке.`;
 
 export function modelRequest(facts,recent=[]){
   const final=facts.event==='tournament_completed';
@@ -137,10 +138,10 @@ export function modelRequest(facts,recent=[]){
   return {
     messages:[
       {role:'system',content:SYSTEM_PROMPT},
-      {role:'user',content:JSON.stringify({task:final?'Дай отдельную угарную реплику с панчлайном о каждом игроке из players. Шутки должны отличаться. Верни каждого player_id ровно один раз.':'Напиши одну короткую дерзкую шутку с панчлайном к событию.',facts,recent_comments:recent})},
+      {role:'user',content:JSON.stringify({task:final?'Дай отдельную угарную реплику с панчлайном о каждом игроке из players. Шутки должны отличаться. Верни каждого player_id ровно один раз.':facts.event==='match_completed'?'Дай один жёсткий и неожиданный панч на 10–16 слов, максимум 120 символов. Без вступления и повторения счёта.':'Напиши одну короткую дерзкую шутку с панчлайном к событию.',facts,recent_comments:recent})},
     ],
     response_format:{type:'json_schema',json_schema:{name:final?'tournament_commentary':'short_commentary',strict:true,schema:{type:'object',additionalProperties:false,properties,required}}},
-    max_completion_tokens:final?1200:180,
+    max_completion_tokens:final?1200:120,
   };
 }
 
@@ -157,14 +158,14 @@ function fallbackPlayer(p){
 export function fallbackResult(facts){
   if(facts.event==='tournament_started')return {comment:facts.defending_champion?`${facts.defending_champion.name} выходит защищать пояс — остальные уже заказали венок его серии побед.`:'Пояс свободен, стол готов — сегодня чьи-то амбиции точно уедут отсюда в чёрном пакете.'};
   if(facts.event==='match_completed'){
-    if(facts.context.defending_champion)return {comment:`${facts.winner.name} прикопал действующего чемпиона — пояс пока жив, но уже пишет завещание.`};
-    if(facts.context.first_career_win)return {comment:`Первая победа ${facts.winner.name}: ноль в статистике торжественно вынесли вперёд ногами.`};
-    if(facts.head_to_head.first_win_over_opponent)return {comment:`${facts.winner.name} впервые вскрыл защиту ${facts.loser.name}; патологоанатом доволен.`};
-    if(facts.winner.streak>=3)return {comment:`У ${facts.winner.name} уже ${facts.winner.streak} побед подряд — кладбище соперников просит расширения.`};
-    if(facts.score.close)return {comment:'Матч на тоненького: пульс выжил, нервные клетки попросили закрытый гроб.'};
-    if(facts.score.blowout)return {comment:`${facts.winner.name} закончил разгром до приезда реанимации.`};
-    if(facts.head_to_head.revenge)return {comment:'Реванш оформлен: старый должок вернули с процентами и траурной лентой.'};
-    return {comment:`${facts.winner.name} забирает матч, а надежды соперника отправляются на плановое вскрытие.`};
+    if(facts.context.defending_champion)return {comment:`${facts.winner.name} снял чемпиона с престола — корона уже на «Авито».`};
+    if(facts.context.first_career_win)return {comment:`${facts.winner.name} впервые победил — ноль выселен без права переписки.`};
+    if(facts.head_to_head.first_win_over_opponent)return {comment:`${facts.winner.name} впервые вскрыл ${facts.loser.name} — гарантия на защиту аннулирована.`};
+    if(facts.winner.streak>=3)return {comment:`${facts.winner.name} штампует ${facts.winner.streak}-ю победу — соперники уже создают профсоюз.`};
+    if(facts.score.close)return {comment:'Матч выжил на волоске, нервные клетки торжественно закрыли сезон.'};
+    if(facts.score.blowout)return {comment:`${facts.winner.name} оформил разгром — у сопротивления даже пульс не нашли.`};
+    if(facts.head_to_head.revenge)return {comment:'Реванш подан холодным — старый должник теперь просит рассрочку.'};
+    return {comment:`${facts.winner.name} забрал матч; у соперника начался аудит самооценки.`};
   }
   if(facts.event==='tournament_completed')return {comments:facts.players.map(p=>({player_id:p.id,comment:fallbackPlayer(p)}))};
   return {};

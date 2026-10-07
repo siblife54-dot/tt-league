@@ -55,8 +55,18 @@ test('voided result formatting clearly marks cancellation',()=>{
 });
 test('commentator prompt requests varied dark sports humor without invented facts',()=>{
   assert.match(SYSTEM_PROMPT,/чёрный юмор/);
+  assert.match(SYSTEM_PROMPT,/самостоятельный голос/);
+  assert.match(SYSTEM_PROMPT,/10–16 слов/);
+  assert.match(SYSTEM_PROMPT,/не более 120 символов/);
   assert.match(SYSTEM_PROMPT,/только факты/);
   assert.match(SYSTEM_PROMPT,/не повторяй|не повторяй их конструкции/);
   assert.match(SYSTEM_PROMPT,/не желай людям реальной смерти/i);
   assert.match(SYSTEM_PROMPT,/Никогда не повторяй цифры счёта/);
+});
+
+test('fallback match punchline stays compact',()=>{
+  const {db,current}=tournamentFixture(),match=recordScore(current,11,9);
+  const facts=factsForEvent({event_type:'match_completed',payload:{tournament:clone(current),match:clone(match)}},db);
+  const comment=fallbackResult(facts).comment;
+  assert.ok(comment.length<=120,`fallback is ${comment.length} characters`);
 });
